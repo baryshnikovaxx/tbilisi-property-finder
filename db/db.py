@@ -87,6 +87,71 @@ def fetch_active_listings():
         conn.close()
 
 
+def fetch_new_listings():
+    """Активные объекты, о которых ещё не было уведомления (уведомление
+    высылается один раз, дальше объект живёт только через price-drop алерты
+    или интерактивного бота)."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "select * from listings where is_active = true and notified_at is null "
+                "order by score desc nulls last;"
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def fetch_price_drops(min_drop_pct=3.0):
+    """Активные объекты, о которых уже сообщали, но цена с тех пор упала
+    минимум на min_drop_pct% от цены на момент последнего уведомления."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "select * from listings where is_active = true and notified_at is not null "
+                "and last_notified_price is not null "
+                "and price_usd < last_notified_price * (1 - %s / 100.0) "
+                "order by score desc nulls last;",
+                (min_drop_pct,),
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def mark_notified(rows):
+    """rows: список dict с id и price_usd — фиксирует, что уведомление
+    отправлено, и запоминает цену на этот момент (база для будущих
+    price-drop алертов)."""
+    if not rows:
+        return
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            for r in rows:
+                cur.execute(
+                    "update listings set notified_at = now(), last_notified_price = %s where id = %s",
+                    (r["price_usd"], r["id"]),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fetch_disliked_ids():
+    """Все id объектов, которые хоть один пользователь бота пометил 👎 —
+    исключаем их из будущих рассылок."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select distinct listing_id from user_feedback where action = 'dislike';")
+            return {row[0] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
 def update_scores(scored_rows):
     """scored_rows: список dict с ключами id, score, dist_to_round_garden_km, data_quality_flags"""
     conn = get_conn()
