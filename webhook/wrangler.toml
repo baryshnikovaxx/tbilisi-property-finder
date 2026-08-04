@@ -1,0 +1,7 @@
+name = "tbilisi-property-bot"
+main = "worker.js"
+compatibility_date = "2026-08-04"
+
+# Секреты (TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY) сюда не
+# добавлять — задаются через дашборд Cloudflare (Settings -> Variables ->
+# Encrypt) или `wrangler secret put <NAME>`, см. README.
